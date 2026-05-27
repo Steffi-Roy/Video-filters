@@ -1,0 +1,189 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue
+}
+
+\newcommand{\imageorplaceholder}[2]{%
+    \IfFileExists{#1}{%
+        \includegraphics[width=\linewidth,height=1.75in,keepaspectratio]{#1}%
+    }{%
+        \fbox{%
+            \begin{minipage}[c][1.75in][c]{0.92\linewidth}
+            \centering
+            \textcolor{gray}{#2}\\[0.25em]
+            \textcolor{gray}{Expected file: \texttt{#1}}
+            \end{minipage}
+        }%
+    }%
+}
+
+\title{Project 2 Report: Real-Time Video Filtering}
+\author{Computer Vision}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Project Description}
+This project implements a real-time video filtering program using OpenCV and C++. The program captures frames from a webcam, processes each frame using custom image manipulation functions in \texttt{filter.cpp}, and displays the selected result interactively. The required filters include custom greyscale, sepia tone, 5x5 blur, Sobel X and Y, gradient magnitude, blur and quantization, face detection, and depth-based effects using Depth Anything V2 through ONNX Runtime. I also implemented additional special effects, including negative color, embossing, face color pop, depth fog, and cartoonization. The main goal was to practice direct pixel access, convolution-style neighborhood operations, separable filtering, live video interaction, and combining classical computer vision with a neural depth model.
+
+\section*{Controls}
+The live video application is run with \texttt{./build/vid}. The most important controls are: \texttt{o} original, \texttt{g} OpenCV greyscale, \texttt{h} custom greyscale, \texttt{a} sepia, \texttt{b} blur, \texttt{x} Sobel X, \texttt{y} Sobel Y, \texttt{m} gradient magnitude, \texttt{l} blur-quantize, \texttt{f} face boxes, \texttt{n} negative, \texttt{e} emboss, \texttt{t} cartoonization, \texttt{c} face color pop, \texttt{d} depth map, \texttt{p} depth fog, \texttt{s} save the current displayed frame, and \texttt{q} quit.
+
+\section*{Required Results}
+
+\subsection*{Required Image 2: Custom Greyscale}
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{opencv_greyscale.png}{OpenCV greyscale screenshot}
+\caption{Default OpenCV greyscale}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{custom_greyscale.png}{Custom greyscale screenshot}
+\caption{Custom greyscale}
+\end{subfigure}
+\caption{The custom greyscale filter uses the expression \texttt{255 - red + (green - blue) / 4}, then copies the result into all three BGR channels. This makes the output a true greyscale image because all channels are identical, but it looks different from OpenCV greyscale because it emphasizes inverse red intensity and a small green-blue contrast term instead of using a standard luminance-weighted average.}
+\end{figure}
+
+\subsection*{Required Image 3: Sepia Tone}
+\begin{figure}[H]
+\centering
+\imageorplaceholder{sepia.png}{Sepia filter screenshot}
+\caption{Sepia tone with vignette. The filter stores the original B, G, and R values before computing the new values, so the red result is never reused while calculating green or blue. Each output channel is clamped to 255, and a mild vignette darkens pixels farther from the image center.}
+\end{figure}
+
+\subsection*{Required Image 4: 5x5 Blur and Timing}
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{original.png}{Original video frame}
+\caption{Original frame}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{blur.png}{Blurred video frame}
+\caption{5x5 blur}
+\end{subfigure}
+\caption{The blur filter processes each color channel separately using the integer Gaussian approximation. The naive version uses a full 5x5 nested loop and \texttt{at}. The faster version uses separable 1x5 horizontal and vertical passes with pointer access. On \texttt{pathfinder.png} with 50 iterations, \texttt{blur5x5\_1} averaged 694.959 ms and \texttt{blur5x5\_2} averaged 113.624 ms, a 6.12x speedup.}
+\end{figure}
+
+\subsection*{Required Image 5: Sobel and Gradient Magnitude}
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.48\linewidth}
+\imageorplaceholder{original.png}{Original video frame}
+\caption{Original}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\linewidth}
+\imageorplaceholder{sobel_x.png}{Sobel X screenshot}
+\caption{Sobel X}
+\end{subfigure}
+
+\vspace{0.7em}
+
+\begin{subfigure}{0.48\linewidth}
+\imageorplaceholder{sobel_y.png}{Sobel Y screenshot}
+\caption{Sobel Y}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\linewidth}
+\imageorplaceholder{magnitude.png}{Gradient magnitude screenshot}
+\caption{Gradient magnitude}
+\end{subfigure}
+\caption{The Sobel X and Sobel Y filters are implemented as separable 1x3 filters and store signed short color outputs. Sobel X emphasizes vertical edges, Sobel Y emphasizes horizontal edges, and the magnitude image computes \texttt{sqrt(sx*sx + sy*sy)} for each color channel before converting to displayable unsigned char values.}
+\end{figure}
+
+\subsection*{Required Image 6: Blur and Quantization}
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{original.png}{Original video frame}
+\caption{Original}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{blur_quantize.png}{Blur-quantize screenshot}
+\caption{Blur and quantize}
+\end{subfigure}
+\caption{The blur-quantize effect first applies the faster 5x5 blur, then reduces each channel to a fixed number of buckets. With 10 levels, the output contains a smaller set of possible colors, giving a simplified poster-like appearance.}
+\end{figure}
+
+\subsection*{Required Image 7: Face Detection}
+\begin{figure}[H]
+\centering
+\imageorplaceholder{face_detection.png}{Face detection screenshot}
+\caption{Face detection uses the provided Haar cascade. The video program converts the frame to greyscale for detection, then draws rectangles around detected faces when face display is enabled.}
+\end{figure}
+
+\subsection*{Required Images 8--9: Depth Anything V2}
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{depth_image.png}{Depth Anything V2 depth image}
+\caption{Depth map}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{depth_fog.png}{Depth fog image}
+\caption{Depth-based fog}
+\end{subfigure}
+\caption{Depth Anything V2 estimates a relative depth value for every pixel from a single RGB frame. The depth image is colorized for display. The creative depth filter adds fog as an exponential function of the normalized depth value, mixing distant/deeper pixels with a pale fog color more strongly than nearer pixels.}
+\end{figure}
+
+\subsection*{Required Images 10--12: Additional Effects}
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.31\linewidth}
+\imageorplaceholder{negative.png}{Negative color screenshot}
+\caption{Negative}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.31\linewidth}
+\imageorplaceholder{emboss.png}{Emboss screenshot}
+\caption{Emboss}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.31\linewidth}
+\imageorplaceholder{face_color_pop.png}{Face color pop screenshot}
+\caption{Face color pop}
+\end{subfigure}
+\caption{The negative effect is a single-step pixel-wise modification that replaces each channel with \texttt{255 - value}. Emboss uses an area computation by combining Sobel X and Sobel Y values with a middle gray offset to create a raised-relief look. Face color pop builds on face detection by keeping detected face rectangles in color while converting the rest of the frame to custom greyscale.}
+\end{figure}
+
+\section*{Extensions}
+I implemented two additional extensions beyond the minimum three effects. The first is depth fog, which uses the Depth Anything V2 depth estimate to make farther regions appear hazier. The second is cartoonization, based on the real-time video abstraction paper by Winnemoeller, Olsen, and Gooch. My implementation applies repeated bilateral filtering to smooth low-detail regions while preserving edges, uses Difference-of-Gaussians to create dark edge outlines, and performs soft color quantization to flatten colors into a cartoon-like style.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{cartoon.png}{Cartoonization screenshot}
+\caption{Cartoonization}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.47\linewidth}
+\imageorplaceholder{depth_fog.png}{Depth fog screenshot}
+\caption{Depth fog}
+\end{subfigure}
+\caption{Extension examples. Cartoonization combines smoothing, edge enhancement, and quantization. Depth fog combines a neural depth estimate with a classical image blending effect.}
+\end{figure}
+
+\section*{Reflection}
+This project helped me understand the difference between using OpenCV as a library of ready-made functions and using OpenCV as an image container while writing the actual image processing myself. The 5x5 blur comparison made the performance impact of memory access patterns very clear: the separable pointer-based version was much faster than the naive nested-loop version. I also learned why signed intermediate images are important for edge filters, since Sobel responses can be negative. The depth task was especially useful because it connected traditional filtering with a learned model: the depth map is not itself the final effect, but it becomes another signal that can control how a filter behaves.
+
+\section*{Acknowledgements}
+I consulted the OpenCV documentation for \texttt{cv::Mat}, pixel access, display, image conversion, and \texttt{convertScaleAbs}. I used the provided course files for face detection and the Depth Anything V2 wrapper. I used the paper \textit{Real-Time Video Abstraction} by Holger Winnemoeller, Sven C. Olsen, and Bruce Gooch to guide the cartoonization extension. I also used Homebrew-installed OpenCV, ONNX Runtime, and Poppler tools while building and testing the project.
+
+\end{document}
